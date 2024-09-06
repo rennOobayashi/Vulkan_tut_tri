@@ -62,8 +62,14 @@ public:
 
 private:
 	GLFWwindow* window;
+
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debug_messenger;
+
+	VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+	VkDevice device;
+
+	VkQueue graphics_queue;
 
 	void init_window() {
 		//glfw 초기화
@@ -83,6 +89,7 @@ private:
 
 		setup_debug_messenger();
 		pick_physical_device();
+		create_logical_device();
 	}
 
 	void main_loop() {
@@ -93,6 +100,9 @@ private:
 	}
 
 	void cleanup() {
+		//검색한 장치 정보 파괴
+		vkDestroyDevice(device, nullptr);
+
 		if (enable_validation_layers)
 			destroy_debug_utils_messenger_EXT(instance, debug_messenger, nullptr);
 
@@ -226,7 +236,6 @@ private:
 	}
 
 	void pick_physical_device() {
-		VkPhysicalDevice physical_device = VK_NULL_HANDLE;
 		uint32_t device_cnt = 0;
 
 		vkEnumeratePhysicalDevices(instance, &device_cnt, nullptr);
@@ -280,6 +289,42 @@ private:
 		}
 
 		return indices;
+	}
+
+	void create_logical_device() {
+		queue_family_indices indices = find_queue_families(physical_device);
+		VkDeviceQueueCreateInfo queue_create_info{};
+		VkPhysicalDeviceFeatures device_feature{};
+		VkDeviceCreateInfo create_info{};
+		float queue_priority = 1.0f;
+
+		queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queue_create_info.queueFamilyIndex = indices.graphics_family.value();
+		queue_create_info.queueCount = 1;
+		queue_create_info.pQueuePriorities = &queue_priority;
+
+		create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		create_info.pQueueCreateInfos = &queue_create_info;
+		create_info.queueCreateInfoCount = 1;
+
+		create_info.pEnabledFeatures = &device_feature;
+
+		create_info.enabledExtensionCount = 0;
+
+		if (enable_validation_layers) {
+			create_info.enabledLayerCount = static_cast<uint32_t>(validation_layers.size());
+			create_info.ppEnabledLayerNames = validation_layers.data();
+		}
+		else {
+			create_info.enabledLayerCount = 0;
+		}
+
+		//매개변수는 인터페이스할 물리적 장치, 방금 지정한 대기열 및 정보 선택적 할당 콜백 포인터, 논리적 장치 핸들을 저장할 변수에 대한 포인터
+		if (vkCreateDevice(physical_device, &create_info, nullptr, &device) != VK_SUCCESS)
+			throw std::runtime_error("failed to create logical device!");
+
+		//매개변수는 논리적 장치, 큐 패밀리, 큐 인덱스 및 큐 핸들을 저장할 매개변수 포인터(단일 큐만 생성하므로 인덱스는 간단하게 0으로)
+		vkGetDeviceQueue(device, indices.graphics_family.value(), 0, &graphics_queue);
 	}
 };
 
